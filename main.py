@@ -21,14 +21,14 @@ if __name__=='__main__':
         'batch_size': 32, 
         'epochs': 500, 
         'number_of_clients': 10, 
-        'subprocess_num': 2, 
+        'subprocess_num': 2, # or 1 or more, depending on your momory
         'noniid': 0, 
         'largest_categories': 5, 
         'K': 5, 
         'variance_ratio': 0.2, 
         'prefix': 'fedtemp/', 
         'buffersize': '5G', 
-        'algorithm': 'fedavgRW', 
+        'algorithm': 'fedensemble', #'fedavg'
         'seed': 0, 
         'model': 'Resnet', 
     }

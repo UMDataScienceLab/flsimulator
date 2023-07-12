@@ -73,17 +73,6 @@ def inner_p(net1, net2, rg=False):
     #print(result)
     return result
 
-def lin_over_sqrt_epsilon(net1, net2, beta1, beta2, t, epsilon):
-    result = pickle.loads(pickle.dumps(net1))
-    net1_dict = net1.state_dict()
-    net2_dict = net2.state_dict()
-    weight_keys = list(net1_dict.keys())
-    result_dict = result.state_dict()
-    for key in weight_keys:
-        result_dict[key] = (net1_dict[key]/(1-beta1**t))/ (torch.sqrt(net2_dict[key]/(1-beta2**t))+epsilon)
-    result.load_state_dict(result_dict)
-    return result
-
 
 def net_flatten(net):
     newnet = pickle.loads(pickle.dumps(net))
@@ -142,60 +131,6 @@ def add(net1, net2):
     result.load_state_dict(result_dict)
     return result
 
-def ada_update(v_vec, m_vec, model_list, posterior_model_list, eta, count,sld, args):
-    #new_model_list = copy.deepcopy(), v_vec, m_vec
-    dm = [scalar_mul([1,-1],[posterior_model_list[i],model_list[i]]) for i in range(len(model_list))]
-    beta1 = args['server-beta1']
-    beta2 = args['server-beta2']
-    epsilon = args['server-epsilon']
-
-    v_vec_new = copy.deepcopy(v_vec)
-
-    m_vec_new = [scalar_mul([beta1,1-beta1],[m_vec[i], dm[i]]) if i in sld else m_vec[i] for i in range(len(model_list))]
-    if args['fed'] in {'bfed-adam','fed-adam'}:
-        v_vec_new = [scalar_mul([beta2,1-beta2], [v_vec[i], mul(dm[i],dm[i])]) if i in sld else v_vec[i] for i in range(len(model_list))]
-    elif args['fed'] in {'bfed-yogi', 'fed-yogi'}:
-        for j in range(len(model_list)):
-            if j in sld:
-                dmjpara = list(dm[j].parameters())
-                vj = list(v_vec[j].parameters())
-                with torch.no_grad():
-                    for i, params in enumerate(v_vec_new[j].parameters()):
-                        params.data = 0 * params.data
-                        dsq = (dmjpara[i].data) ** 2
-                        vji = vj[i].data
-                        params.data = vji - (1-beta2)*dsq*torch.sign(vji-dsq)
-            else:
-                v_vec_new[j] = v_vec[j]
-
-    dw = [lin_over_sqrt_epsilon(m_vec_new[i], v_vec_new[i], beta1, beta2, count[i], epsilon) for i in range(len(model_list))]
-
-    new_model_list = [scalar_mul([1,eta],[posterior_model_list[i],dw[i]]) if i in sld else posterior_model_list[i] for i in range(len(model_list))]
-    return new_model_list, v_vec_new, m_vec_new
-
-def ada_update_single(v, m, model, dw, eta, t, args):
-    beta1 = args['server-beta1']
-    beta2 = args['server-beta2']
-    epsilon = args['server-epsilon']
-    #print(len(dw))
-    #print(len(m))
-    m_new = scalar_mul([beta1, 1 - beta1], [m, dw])
-    v_new = copy.deepcopy(v)
-    if args['fed'] in {'bfed-adam', 'fed-adam'}:
-        v_new = scalar_mul([beta2, 1 - beta2], [v, mul(dw, dw)])
-    elif args['fed'] in {'bfed-yogi', 'fed-yogi'}:
-        with torch.no_grad():
-            dwlist = list(dw.parameters())
-            vlist = list(v.parameters())
-            for i, params in enumerate(v_new.parameters()):
-                params.data = 0 * params.data
-                dsq = (dwlist[i].data) ** 2
-                vji = vlist[i].data
-                params.data = vji - (1 - beta2) * dsq * torch.sign(vji - dsq)
-    dwt = lin_over_sqrt_epsilon(m_new, v_new, beta1, beta2, t, epsilon)
-    new_model = scalar_mul([1, eta], [model, dwt])
-    return new_model, v_new, m_new
-
 
 def gradient_l2_norm(model):
     norm = 0
@@ -220,38 +155,6 @@ def model_std(model_list):
     return torch.sqrt(var/(len(model_list)-1))
 
 
-def model_star(model_list):
-    res = []
-    model_belong_dict = dict()
-    lth = len(model_list)
-    max_index = 0
-    for i in range(lth):
-        for j in range(0,i):
-            diff = scalar_mul([1,-1],[model_list[i],model_list[j]])
-            dis = torch.sqrt(inner_p(diff, diff))
-            if dis<1e-1:
-                if j in model_belong_dict.keys():
-                    model_belong_dict[i] = copy.deepcopy(model_belong_dict[j])
-                else:
-                    model_belong_dict[i] = max_index
-                    max_index += 1
-            res.append(dis.item())
-    return res, model_belong_dict
-
-def weight_params_pca(model_list, rank, decentralize=True):
-    A = net_flatten(model_list[0]).unsqueeze(0)
-    for i in range(1,len(model_list)):
-        A = torch.cat((A,net_flatten(model_list[i]).unsqueeze(0)),0)
-    A=A.numpy()
-    if decentralize:
-        mean = A.mean(0)
-        A = A - mean
-    transformer = PCA(n_components=rank, random_state=0)
-    transformer.fit(A)
-
-    #U, S, V = torch.pca_lowrank(A,q=rank)
-    return transformer.explained_variance_ratio_
-
 def grad_over_model(numerator, denominator):
     result = pickle.loads(pickle.dumps(denominator))
     #denominator.zero_grad()
@@ -265,14 +168,6 @@ def grad_over_model(numerator, denominator):
     return result
 
 
-def rbk(net1, net2, r, rg=False):
-    diff = scalar_mul([1,-1],[net1,net2])
-    l2norm = inner_p(diff, diff, rg)
-    return (-r*l2norm).exp()
-
-def nabla_1rbk(net1, net2, r):
-    exp = rbk(net1,net2,r)
-    return scalar_mul([-2*exp*r, 2*exp*r], [net1, net2])
 
 if __name__ == '__main__':
     from network import CNNMnist, Twohiddenlayerfc

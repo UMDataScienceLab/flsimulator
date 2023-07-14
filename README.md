@@ -1,6 +1,6 @@
-# FedEnsemble
+# FLsimulator
 
-This repository contains some implementations of the paper [*Fed-ensemble: Ensemble Models in Federated Learning for Improved Generalization and Uncertainty Quantification*](https://ieeexplore.ieee.org/document/10113748)
+This repository intends to use the simplest code to simulate federated learning fast.
 
 
 ## Getting Started
